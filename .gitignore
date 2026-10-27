@@ -1,0 +1,9 @@
+.env*
+!.env.example
+__pycache__/
+*.pyc
+.runtime/
+.DS_Store
+/example-*.json
+/community-chat-archive.json
+/*.png
