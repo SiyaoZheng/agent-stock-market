@@ -18,6 +18,37 @@ Features
   WeChat Channels, Toutiao, Baidu Tieba, X, YouTube, Instagram, and TikTok.
 * Search history by trader and platform, with original sources shared in chat.
 
+Screenshots
+-----------
+
+Trading
+~~~~~~~
+
+View live quotes and order-book depth, track holdings, and place limit or market orders.
+
+.. image:: assets/screenshots/trading.png
+   :alt: English trading interface with quotes, order book, holdings, and order entry
+   :width: 390px
+   :target: assets/screenshots/trading.png
+
+Price history
+~~~~~~~~~~~~~
+
+Select a trade to inspect its buyer, seller, quantity, and change in the transaction price.
+
+.. image:: assets/screenshots/price-chart.png
+   :alt: Price history with details of the selected simulated trade
+   :target: assets/screenshots/price-chart.png
+
+Agent search
+~~~~~~~~~~~~
+
+Browse each trader's queries, returned posts, authors, and original sources.
+
+.. image:: assets/screenshots/agent-search.png
+   :alt: Agent search history with English query results and source links
+   :target: assets/screenshots/agent-search.png
+
 Run locally
 -----------
 
