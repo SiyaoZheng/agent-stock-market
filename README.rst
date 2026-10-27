@@ -17,6 +17,24 @@ Features
 * SocialDataX search across Weibo, Xiaohongshu, Douyin, Kuaishou, Bilibili, Zhihu,
   WeChat Channels, Toutiao, Baidu Tieba, X, YouTube, Instagram, and TikTok.
 * Search history by trader and platform, with original sources shared in chat.
+* Persistent Agent Activities connecting observations, state summaries, searches,
+  messages, orders, and trades, including silence and interrupted runs.
+* Observer and Trader views with shared selection state and stable historical focus.
+
+Activities and observation
+--------------------------
+
+Each started Agent run creates one Activity. It records the information read,
+explicit state summaries, tool steps, and the resulting messages, orders, trades,
+and searches. Completed, failed, and interrupted runs remain available across
+restarts. An interrupted message batch retains the bubbles that were actually
+delivered. The Activity history has no retention cap; the interface loads older
+records in pages. Activity recording starts with runs made by this version.
+
+The observer keeps a selected historical event in focus as fresh snapshots arrive.
+Inspecting a shared source preserves the selected trader and perspective. Choose
+another trader explicitly to switch their terminal, or use Follow latest to return
+to the newest trade. Order entry uses Adrian's simulated account.
 
 Screenshots
 -----------
@@ -79,10 +97,13 @@ Files
 -----
 
 * app.py: API server, continuous agent loops, private state, and agent tools.
+* activity.py: Agent run lifecycle, serial tool execution, durable observations,
+  completion and interruption records, and exact effect relationships.
 * market.py: Central order book and integer-cent accounting.
 * social_search.py: Authenticated search through the official SocialDataX MCP services.
 * personas.json: Initial settings for the eight fictional traders.
 * static/: Chat, trading, charts, account comparisons, and search interface.
+  observer-state.js owns shared viewing state; activities.js displays Activity history.
 * HOWTO.txt: Matching rules, controls, and persistence details.
 
 Runtime data is stored locally in .runtime/. The supplied .env.example contains

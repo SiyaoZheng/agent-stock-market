@@ -125,8 +125,11 @@ function renderConnection() {
     $('#runBadge').classList.remove('running');
   }
   updateControls();
+  window.observerState?.syncSession(state);
+  window.activityUI?.update(state,online);
   window.marketUI?.update(state,online);
   window.socialSearchUI?.update(state,online);
+  window.terminalUI?.update(state,online);
 }
 
 function updateControls() {
@@ -295,7 +298,7 @@ function renderMessages(resetPosition = false) {
       const author = isResident ? `<button class="author-button" data-person="${escapeHTML(message.author_id)}" aria-label="View profile for ${escapeHTML(message.name)}">${escapeHTML(message.name)}</button>` : `<strong class="author-button">${escapeHTML(message.name)}</strong>`;
       const quote = parent ? `<button class="reply-quote" data-jump="${parent.id}" aria-label="View original message ${parent.id} from ${escapeHTML(parent.name)}"><strong>Reply ${escapeHTML(parent.name)} · #${parent.id}<span aria-hidden="true">↗</span></strong><span>${escapeHTML(parent.body)}</span></button>` : '';
       const content = poll ? pollCard(poll) : chain ? chainCard(chain) : `${message.body ? `<p class="message-body">${richText(message.body)}</p>` : ''}${sourceCard(message)}`;
-      node.innerHTML = `<div class="message-header">${avatar(message)}<div class="message-author">${author}<small>${escapeHTML(message.role)}</small></div><div class="message-stamp"><time datetime="${escapeHTML(message.time)}">${time(message.time)}</time></div></div>${quote}${content}<div class="message-reactions">${reactionsMarkup(message)}</div><div class="message-bottom"><button class="reply-button" data-reply="${message.id}" aria-label="Reply to message ${message.id} from ${escapeHTML(message.name)}">↳ Reply</button><button class="reply-button" data-react="${message.id}" aria-label="React to message ${message.id}">＋ React</button>${responseCount ? `<span class="reply-count">${countLabel(responseCount,'reply','replies')}</span>` : ''}<span class="message-number">#${String(message.id).padStart(2,'0')}</span></div>`;
+      node.innerHTML = `<div class="message-header">${avatar(message)}<div class="message-author">${author}<small>${escapeHTML(message.role)}</small></div><div class="message-stamp"><time datetime="${escapeHTML(message.time)}">${time(message.time)}</time></div></div>${quote}${content}<div class="message-reactions">${reactionsMarkup(message)}</div><div class="message-bottom"><button class="reply-button" data-reply="${message.id}" aria-label="Reply to message ${message.id} from ${escapeHTML(message.name)}">↳ Reply</button><button class="reply-button" data-react="${message.id}" aria-label="React to message ${message.id}">＋ React</button><button class="reply-button" data-trace-message="${message.id}" aria-label="Trace message ${message.id}">Trace ↗</button>${responseCount ? `<span class="reply-count">${countLabel(responseCount,'reply','replies')}</span>` : ''}<span class="message-number">#${String(message.id).padStart(2,'0')}</span></div>`;
     }
     desired.push(node);
   }
@@ -490,6 +493,7 @@ async function loadAgentDetail(force = false) {
     const detail = await api(`agents/${encodeURIComponent(id)}`);
     if (selectedAgentId !== id) return;
     currentAgentDetail = detail; agentDetailKey = key;
+    window.activityUI?.ingest(detail.activities,id); window.activityUI?.renderInspector();
     formError('agentError');
     renderAgentObservation(detail); syncAgentDraft(detail);
     const person = detail.persona;
@@ -649,7 +653,7 @@ document.addEventListener('click', event => {
   if (button.dataset.viewPerson) {
     personFilter = button.dataset.viewPerson;
     filter = 'all'; query = ''; $('#searchInput').value = '';
-    $('#personDialog').close(); renderMessages(true);
+    $('#personDialog').close(); window.terminalUI?.show('discussion'); renderMessages(true);
   }
   if (button.hasAttribute('data-retry')) refresh(true);
   if (button.hasAttribute('data-clear-filters')) clearFilters();
@@ -657,6 +661,7 @@ document.addEventListener('click', event => {
     const id = Number(button.dataset.jump);
     if (!state?.messages.some(message => message.id === id)) return;
     closeDrawers(); if ($('#personDialog').open) $('#personDialog').close(); clearFilters();
+    window.terminalUI?.show('discussion');
     const node = document.getElementById(`message-${id}`);
     node?.scrollIntoView({block:'center', behavior:'instant'});
     node?.focus({preventScroll:true});
@@ -714,7 +719,7 @@ $('#editTopicButton').addEventListener('click', openPublicSettings);
 $('#publicInfoButton').addEventListener('click', openPublicSettings);
 $('#viewPersonMessages').addEventListener('click', () => {
   personFilter = selectedAgentId; filter = 'all'; query = ''; $('#searchInput').value = '';
-  $('#personDialog').close(); renderMessages(true);
+  $('#personDialog').close(); window.terminalUI?.show('discussion'); renderMessages(true);
 });
 $('.inspector-tabs').addEventListener('keydown', event => {
   const tabs = $$('[data-person-tab]');

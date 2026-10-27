@@ -1,14 +1,16 @@
 'use strict';
 
 (() => {
-  let market = null, selectedSymbol = null, side = 'buy', pending = false, marketOnline = false, lastOrderId = null;
+  const focus = window.observerState;
+  let renderedSymbol = null;
+  let market = null, side = 'buy', pending = false, marketOnline = false, lastOrderId = null;
   const cancelling = new Set();
   const markupCache = new Map();
   function markup(id, html) { if (markupCache.get(id) !== html) { markupCache.set(id,html); $(id).innerHTML = html; } }
   const number = (value, digits = 2) => Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-US', {minimumFractionDigits:digits,maximumFractionDigits:digits}) : '—';
   const signed = value => `${Number(value) > 0 ? '+' : ''}${number(value)}`;
   const changeClass = value => Number(value) > 0 ? 'up' : Number(value) < 0 ? 'down' : 'flat';
-  const currentStock = () => market?.stocks.find(stock => stock.symbol === selectedSymbol);
+  const currentStock = () => market?.stocks.find(stock => stock.symbol === focus.symbol);
   const isOpen = order => ['open','partially_filled'].includes(order.status);
   const statusName = order => ({open:'Awaiting fill',partially_filled:'Partially filled',filled:'Filled',cancelled:order.filled_quantity ? 'Partially filled · Remainder cancelled' : 'Cancelled'}[order.status] || order.status);
   const stockName = symbol => market?.stocks.find(stock => stock.symbol === symbol)?.name || symbol;
@@ -76,14 +78,14 @@
     $('#orderFeedback').hidden = false;
   }
   function renderTrades() {
-    const trades = (market?.trades || []).filter(trade => trade.symbol === selectedSymbol).slice(0,20);
+    const trades = (market?.trades || []).filter(trade => trade.symbol === focus.symbol).slice(0,20);
     $('#tradesList').innerHTML = trades.length ? trades.map(trade => `<div class="trade-row" title="${escapeHTML(personName(trade.buyer_id))} Buy · ${escapeHTML(personName(trade.seller_id))} Sell"><time>${preciseTime(trade.time)}</time><strong>${number(trade.price)}</strong><span>${number(trade.quantity,0)} shares</span></div>`).join('') : '<p class="market-empty">Waiting for the first trade.</p>';
   }
   function render() {
     if (!market) { updateOrderForm(); return; }
-    const firstLoad = !market.stocks.some(stock => stock.symbol === selectedSymbol);
-    if (firstLoad) selectedSymbol = market.stocks[0]?.symbol || null;
-    markup('#stockTabs',market.stocks.map(stock => `<button type="button" class="stock-tab ${stock.symbol === selectedSymbol ? 'selected' : ''}" data-stock="${escapeHTML(stock.symbol)}" aria-pressed="${stock.symbol === selectedSymbol}"><span class="stock-name">${escapeHTML(stock.name)}<span class="stock-code">${escapeHTML(stock.symbol)}</span></span><span class="stock-price-line ${changeClass(stock.change)}"><strong>${number(stock.last_price)}</strong><small>${signed(stock.change_percent)}%</small></span>${window.marketAnalytics?.sparkline(stock) || ''}</button>`).join(''));
+    const firstLoad = renderedSymbol !== focus.symbol;
+    renderedSymbol = focus.symbol;
+    markup('#stockTabs',market.stocks.map(stock => `<button type="button" class="stock-tab ${stock.symbol === focus.symbol ? 'selected' : ''}" data-stock="${escapeHTML(stock.symbol)}" aria-pressed="${stock.symbol === focus.symbol}"><span class="stock-name">${escapeHTML(stock.name)}<span class="stock-code">${escapeHTML(stock.symbol)}</span></span><span class="stock-price-line ${changeClass(stock.change)}"><strong>${number(stock.last_price)}</strong><small>${signed(stock.change_percent)}%</small></span>${window.marketAnalytics?.sparkline(stock) || ''}</button>`).join(''));
     const stock = currentStock();
     if (!stock) return;
     $('#selectedStockName').textContent = stock.name;
@@ -93,9 +95,13 @@
     $('#selectedStockChange').textContent = `${signed(stock.change)} (${signed(stock.change_percent)}%)`;
     $('#selectedStockChange').className = changeClass(stock.change);
     $('#stockVolume').textContent = `${number(stock.volume,0)} shares`;
-    const book = market.books?.[selectedSymbol] || {bids:[],asks:[]};
+    $('#overviewBookSymbol').textContent = focus.symbol;
+    $('#overviewSpread').textContent = stock.ask != null && stock.bid != null ? `Spread ${number(stock.ask-stock.bid)}` : 'Spread —';
+    const book = market.books?.[focus.symbol] || {bids:[],asks:[]};
     $('#bidBook').innerHTML = bookRows(book.bids || [],true);
     $('#askBook').innerHTML = bookRows(book.asks || [],false);
+    $('#overviewBidBook').innerHTML = bookRows(book.bids || [],true);
+    $('#overviewAskBook').innerHTML = bookRows(book.asks || [],false);
     const account = market.my_account;
     $('#availableCash').textContent = account ? number(account.available_cash) : '—';
     $('#accountEquity').textContent = account ? number(account.equity) : '—';
@@ -108,16 +114,22 @@
     marketOnline = connected && !!nextState?.market;
     if (nextState?.market) market = nextState.market;
     $('#marketConnection').classList.toggle('offline',!marketOnline);
-    $('#marketConnection').innerHTML = `<i></i>${marketOnline ? 'Live' : market ? 'Reconnecting' : 'Waiting for exchange'}`;
+    $('#marketConnection').innerHTML = `<i></i>${marketOnline ? 'Connected' : market ? 'Reconnecting' : 'Waiting for exchange'}`;
     render();
-    window.marketAnalytics?.update(nextState,connected,selectedSymbol);
+    window.marketAnalytics?.update(nextState,connected,focus.symbol);
+  }
+  function select(next, updateChart = true) {
+    if (!market?.stocks.some(item => item.symbol === next)) return;
+    if(updateChart && !focus.selectSymbol(next)) return;
+    if(next !== focus.symbol) return;
+    lastOrderId = null; formError('orderError'); $('#orderFeedback').hidden = true;
+    render(); useBestPrice(); if (updateChart) window.marketAnalytics?.render(true);
   }
   document.addEventListener('click', async event => {
     const button = event.target.closest('button');
     if (!button || button.disabled) return;
     if (button.dataset.stock) {
-      selectedSymbol = button.dataset.stock; lastOrderId = null; formError('orderError'); $('#orderFeedback').hidden = true;
-      render(); useBestPrice(); window.marketAnalytics?.select(selectedSymbol);
+      select(button.dataset.stock); window.terminalUI?.onStockChange(button.dataset.stock);
     }
     if (button.dataset.orderSide) { side = button.dataset.orderSide; formError('orderError'); useBestPrice(); }
     if (button.dataset.marketView) {
@@ -156,7 +168,7 @@
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10000 || (price != null && !(price > 0))) { formError('orderError','Enter a valid price and a whole number of shares from 1 to 10,000.'); return; }
     pending = true; lastOrderId = null; formError('orderError'); $('#orderFeedback').hidden = true; updateOrderForm();
     try {
-      const result = await api('market/orders',{symbol:selectedSymbol,side,order_type:orderType,quantity,limit_price:price});
+      const result = await api('market/orders',{symbol:focus.symbol,side,order_type:orderType,quantity,limit_price:price});
       lastOrderId = result.order.id;
       await refresh(true);
       const order = result.order;
@@ -166,6 +178,6 @@
     } catch(error) { formError('orderError',error.message); }
     finally { pending = false; updateOrderForm(); }
   });
-  window.marketUI = {update,renderAgentAccount};
+  window.marketUI = {update,renderAgentAccount,select};
   update(state,online);
 })();
