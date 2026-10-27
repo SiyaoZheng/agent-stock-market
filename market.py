@@ -15,12 +15,12 @@ def cents(value):
     try:
         amount = Decimal(str(value))
     except InvalidOperation as exc:
-        raise ValueError("价格格式不正确") from exc
+        raise ValueError("Invalid price format") from exc
     if not amount.is_finite() or amount <= 0 or amount > 1000000:
-        raise ValueError("价格必须在 0.01–1000000 之间")
+        raise ValueError("Price must be between 0.01 and 1000000")
     scaled = amount * 100
     if scaled != scaled.to_integral_value():
-        raise ValueError("价格最多保留两位小数")
+        raise ValueError("Price can have at most two decimal places")
     return int(scaled)
 
 
@@ -35,11 +35,13 @@ class Exchange:
             self.trade_sequence = data.get("trade_sequence", len(self.trades))
         else:
             self.stocks = {
-                "QH": {"name": "青禾科技", "initial": 10000, "last": 10000, "volume": 0, "history": []},
-                "YS": {"name": "远山能源", "initial": 5000, "last": 5000, "volume": 0, "history": []},
+                "QH": {"name": "Qinghe Technology", "initial": 10000, "last": 10000, "volume": 0, "history": []},
+                "YS": {"name": "Yuanshan Energy", "initial": 5000, "last": 5000, "volume": 0, "history": []},
             }
             self.accounts, self.orders, self.trades = {}, [], []
             self.order_sequence = self.trade_sequence = 0
+        for symbol, name in {"QH": "Qinghe Technology", "YS": "Yuanshan Energy"}.items():
+            self.stocks[symbol]["name"] = name
         self.started_at = (data or {}).get("started_at") or (
             self.orders[0]["created_at"] if self.orders else timestamp())
         # Older saved markets also get participant-level chart data from the trade ledger.
@@ -96,7 +98,7 @@ class Exchange:
 
     def account(self, actor, name=None):
         if actor not in self.accounts:
-            raise ValueError("交易账户不存在")
+            raise ValueError("Trading account not found")
         raw = self.accounts[actor]
         reserved_cash = 0
         reserved_stock = {symbol: 0 for symbol in self.stocks}
@@ -146,22 +148,22 @@ class Exchange:
     def place(self, actor, symbol, side, order_type, quantity, limit_price=None):
         symbol = symbol.strip().upper()
         if actor not in self.accounts:
-            raise ValueError("交易账户不存在")
+            raise ValueError("Trading account not found")
         if symbol not in self.stocks or side not in {"buy", "sell"} or order_type not in {"limit", "market"}:
-            raise ValueError("股票、买卖方向或订单类型不正确")
+            raise ValueError("Invalid stock, side or order type")
         if type(quantity) is not int or not 1 <= quantity <= 10000:
-            raise ValueError("每笔数量必须是 1–10000 股整数")
+            raise ValueError("Quantity must be an integer from 1 to 10000 shares")
         price = cents(limit_price) if order_type == "limit" else None
         if order_type == "market" and limit_price is not None:
-            raise ValueError("市价单不填写限价")
+            raise ValueError("Market orders must not specify a limit price")
         available = self.account(actor)
         available_cash = round(available["available_cash"] * 100)
         if side == "sell" and quantity > available["available_positions"][symbol]:
-            raise ValueError("可用持仓不足；已挂出的卖单会冻结股票")
+            raise ValueError("Insufficient available shares; open sell orders reserve shares")
         if side == "buy" and order_type == "limit" and quantity * price > available_cash:
-            raise ValueError("可用现金不足；请减少数量、降低限价或撤销其他买单")
+            raise ValueError("Insufficient available cash; reduce the quantity or limit price, or cancel another buy order")
         if side == "buy" and order_type == "market" and available_cash <= 0:
-            raise ValueError("没有可用现金")
+            raise ValueError("No available cash")
         self.order_sequence += 1
         order = {"id": f"O{self.order_sequence:06d}", "sequence": self.order_sequence,
                  "actor_id": actor, "symbol": symbol, "side": side, "order_type": order_type,
@@ -180,14 +182,14 @@ class Exchange:
                                        or (side == "sell" and execution_price < price)):
                 break
             if maker["actor_id"] == actor:
-                order["reason"] = "防止与自己的订单成交，剩余部分取消"
+                order["reason"] = "Remainder cancelled to prevent self-trading"
                 break
             fill = min(order["remaining"], maker["remaining"])
             if side == "buy" and order_type == "market":
                 cash = round(self.account(actor)["available_cash"] * 100)
                 fill = min(fill, cash // execution_price)
                 if not fill:
-                    order["reason"] = "可用现金不足，剩余部分取消"
+                    order["reason"] = "Remainder cancelled because available cash is insufficient"
                     break
             buyer = order if side == "buy" else maker
             seller = maker if side == "buy" else order
@@ -217,17 +219,17 @@ class Exchange:
         if order["remaining"] and (order_type == "market" or order["reason"]):
             order["status"] = "cancelled"
             if not order["reason"]:
-                order["reason"] = "即时成交后，缺少对手盘的剩余部分自动取消"
+                order["reason"] = "Unfilled remainder cancelled after immediate matching"
         order["updated_at"] = timestamp()
         return {"order": self.public_order(order), "fills": fills, "account": self.account(actor)}
 
     def cancel(self, actor, order_id):
         order = next((o for o in self.orders if o["id"] == order_id), None)
         if order is None or order["actor_id"] != actor:
-            raise ValueError("只能撤销自己账户的订单")
+            raise ValueError("You can cancel only your own orders")
         if order["status"] not in {"open", "partially_filled"}:
-            raise ValueError("订单已结束，无需撤单")
-        order.update(status="cancelled", reason="主动撤销剩余委托", updated_at=timestamp())
+            raise ValueError("This order is already closed")
+        order.update(status="cancelled", reason="Remaining quantity cancelled by the trader", updated_at=timestamp())
         return self.public_order(order)
 
     def snapshot(self, names=None):
@@ -244,7 +246,7 @@ class Exchange:
                            "bid": book["bids"][0]["price"] if book["bids"] else None,
                            "ask": book["asks"][0]["price"] if book["asks"] else None,
                            "volume": stock["volume"], "history": stock["history"]})
-        names = {**names, "opening_liquidity": "开盘流动性"}
+        names = {**names, "opening_liquidity": "Opening liquidity"}
         return {"stocks": stocks, "books": books, "trades": self.trades[-100:][::-1],
                 "accounts": [self.account(actor, names.get(actor)) for actor in self.accounts],
                 "my_account": self.account("adrian", "Adrian"), "my_orders": self.actor_orders("adrian")}

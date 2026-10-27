@@ -4,7 +4,7 @@
   const dialog = $('#analyticsDialog');
   let market = null, symbol = null, pinnedKey = null, hoverKey = null, chart = null, view = 'prices';
   let chartKey = '', tableKey = '', tabsKey = '', ledgerKey = '', lastDetailKey = '';
-  const fmt = (value, digits = 2) => Number.isFinite(Number(value)) ? Number(value).toLocaleString('zh-CN', {minimumFractionDigits:digits,maximumFractionDigits:digits}) : '—';
+  const fmt = (value, digits = 2) => Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-US', {minimumFractionDigits:digits,maximumFractionDigits:digits}) : '—';
   const sign = (value, digits = 2) => `${Number(value) > 0 ? '+' : ''}${fmt(value,digits)}`;
   const tone = value => Number(value) > 0 ? 'profit' : Number(value) < 0 ? 'loss' : 'unchanged';
   const stock = () => market?.stocks.find(item => item.symbol === symbol);
@@ -34,7 +34,7 @@
     const firstTime = points[0].ts, duration = points.at(-1).ts - firstTime;
     const mapped = points.map(point => ({x:duration ? pad+(point.ts-firstTime)/duration*(width-pad*2) : width/2,y:max === min ? height/2 : height-pad-(point.price-min)/range*(height-pad*2)}));
     const last = mapped.at(-1);
-    return `<svg class="stock-sparkline ${tone(item.change)}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(item.name)}实际成交走势"><path d="${stepPath(mapped)}"/><circle cx="${last.x.toFixed(2)}" cy="${last.y.toFixed(2)}" r="2"/></svg>`;
+    return `<svg class="stock-sparkline ${tone(item.change)}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(item.name)} trade price history"><path d="${stepPath(mapped)}"/><circle cx="${last.x.toFixed(2)}" cy="${last.y.toFixed(2)}" r="2"/></svg>`;
   }
   function select(next) {
     if (!market?.stocks.some(item => item.symbol === next)) return;
@@ -61,7 +61,7 @@
     if (nextState?.market) market = nextState.market;
     if (!symbol || !market?.stocks.some(item => item.symbol === symbol)) symbol = preferredSymbol || market?.stocks[0]?.symbol;
     $('#openAnalytics').disabled = !market;
-    $('#analyticsConnection').textContent = !connected ? '连接重试中' : nextState?.running ? '实时更新' : '交易员已暂停';
+    $('#analyticsConnection').textContent = !connected ? 'Reconnecting' : nextState?.running ? 'Live' : 'Traders paused';
     $('#analyticsConnection').classList.toggle('offline',!connected);
     if (dialog.open) render();
   }
@@ -74,14 +74,14 @@
       tabsKey = nextTabsKey;
       $('#analyticsStockTabs').innerHTML = market.stocks.map(item => `<button type="button" data-analysis-stock="${escapeHTML(item.symbol)}" class="${item.symbol === symbol ? 'selected' : ''}" aria-pressed="${item.symbol === symbol}">${escapeHTML(item.name)} <span>${escapeHTML(item.symbol)}</span></button>`).join('');
     }
-    $('#priceChartHeading').textContent = `${item.name} · 成交价格走势`;
+    $('#priceChartHeading').textContent = `${item.name} · Trade price history`;
     $('#analysisPrice').textContent = fmt(item.last_price);
     $('#analysisPrice').className = tone(item.change);
     $('#analysisChange').textContent = `${sign(item.change)} / ${sign(item.change_percent)}%`;
     $('#analysisChange').className = tone(item.change);
     $('#analysisTradeCount').textContent = fmt(item.history?.length || 0,0);
     $('#analysisVolume').textContent = fmt(item.volume,0);
-    $('#analysisLastTrade').textContent = item.history?.length ? `最后成交 ${preciseTime(item.history.at(-1).time)}` : '等待首笔成交';
+    $('#analysisLastTrade').textContent = item.history?.length ? `Last trade ${preciseTime(item.history.at(-1).time)}` : 'Waiting for first trade';
     const nextChartKey = JSON.stringify([symbol,item.started_at,item.initial_price,item.history]);
     if (view === 'prices' && (force || chartKey !== nextChartKey)) { chartKey = nextChartKey; hoverKey = null; renderChart(item); }
     renderAccounts(); renderLedger(item);
@@ -89,7 +89,7 @@
   function renderChart(item) {
     const container = $('#priceChart');
     const rows = series(item);
-    if (!rows.length) { container.innerHTML = '<p class="chart-empty">等待初始报价与首笔成交。</p>'; chart = null; $('#tradeDetail').innerHTML = ''; return; }
+    if (!rows.length) { container.innerHTML = '<p class="chart-empty">Waiting for an opening quote and the first trade.</p>'; chart = null; $('#tradeDetail').innerHTML = ''; return; }
     const width = Math.max(280,Math.floor(container.clientWidth)), height = width < 430 ? 240 : 264;
     const margin = {left:54,right:20,top:18,bottom:32};
     const prices = rows.map(row => Number(row.price));
@@ -114,8 +114,8 @@
     const grid = yTicks.map(value=>`<line x1="${margin.left}" x2="${width-margin.right}" y1="${y(value)}" y2="${y(value)}" class="price-grid"/><text x="${margin.left-9}" y="${y(value)+3}" text-anchor="end" class="axis-label">${fmt(value)}</text>`).join('');
     const ticks = times.map((value,index)=>`<text x="${x(value)}" y="${height-9}" text-anchor="${duration && index===0 ? 'start' : duration && index===times.length-1 ? 'end' : 'middle'}" class="axis-label">${preciseTime(value)}</text>`).join('');
     const origin = Number.isFinite(baseline) ? `<line class="initial-price-line" x1="${margin.left}" x2="${width-margin.right}" y1="${y(baseline)}" y2="${y(baseline)}"/>` : '';
-    const dots = points.map(point=>`<circle class="trade-hit" data-chart-key="${escapeHTML(point.key)}" cx="${point.x}" cy="${point.y}" r="9" role="button" tabindex="0" aria-label="${escapeHTML(point.initial ? `初始报价 ${fmt(point.price)}` : `${point.trade_id || ''}，${preciseTime(point.time)}，${name(point.buyer_id)}买入、${name(point.seller_id)}卖出${fmt(point.quantity,0)}股，价格${fmt(point.price)}`)}"/><circle class="trade-point${point.initial ? ' origin-point' : ''}" cx="${point.x}" cy="${point.y}" r="${point.initial ? 4 : 3}"/>`).join('');
-    container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="group" aria-label="${escapeHTML(item.name)}逐笔成交价格图"><title>${escapeHTML(item.name)}从初始报价到最新成交的价格走势</title>${grid}${origin}<path class="price-step" d="${stepPath(points)}"/>${dots}${ticks}<g id="chartCursor" pointer-events="none"><line id="chartCursorLine" y1="${margin.top}" y2="${height-margin.bottom}"/><circle id="chartCursorDot" r="5"/></g></svg>`;
+    const dots = points.map(point=>`<circle class="trade-hit" data-chart-key="${escapeHTML(point.key)}" cx="${point.x}" cy="${point.y}" r="9" role="button" tabindex="0" aria-label="${escapeHTML(point.initial ? `Opening quote ${fmt(point.price)}` : `${point.trade_id || ''}, ${preciseTime(point.time)}, buyer ${name(point.buyer_id)}, seller ${name(point.seller_id)}, ${fmt(point.quantity,0)} shares at ${fmt(point.price)}`)}"/><circle class="trade-point${point.initial ? ' origin-point' : ''}" cx="${point.x}" cy="${point.y}" r="${point.initial ? 4 : 3}"/>`).join('');
+    container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="group" aria-label="${escapeHTML(item.name)} trade price chart"><title>${escapeHTML(item.name)} price history from the opening quote to the latest trade</title>${grid}${origin}<path class="price-step" d="${stepPath(points)}"/>${dots}${ticks}<g id="chartCursor" pointer-events="none"><line id="chartCursorLine" y1="${margin.top}" y2="${height-margin.bottom}"/><circle id="chartCursorDot" r="5"/></g></svg>`;
     chart = {points,width,height,margin};
     if (pinnedKey && !points.some(point=>point.key===pinnedKey)) pinnedKey = null;
     renderSelection();
@@ -133,16 +133,16 @@
     const following = !pinnedKey;
     $('#followLatestTrade').classList.toggle('following',following);
     $('#followLatestTrade').setAttribute('aria-pressed',String(following));
-    $('#followLatestTrade').textContent = following ? '正在跟随最新' : '跟随最新成交';
+    $('#followLatestTrade').textContent = following ? 'Following latest' : 'Follow latest trade';
     const key = JSON.stringify([symbol,point,following,market.accounts.map(account=>[account.actor_id,account.name])]);
     if (lastDetailKey === key) return;
     lastDetailKey = key;
     if (point.initial) {
-      $('#tradeDetail').innerHTML = `<span class="trade-detail-label">初始报价</span><time>${preciseTime(point.time)}</time><strong class="detail-price">${fmt(point.price)}<small>模拟元</small></strong><p class="initial-note">交易开始时的参考价格</p>`;
+      $('#tradeDetail').innerHTML = `<span class="trade-detail-label">Opening quote</span><time>${preciseTime(point.time)}</time><strong class="detail-price">${fmt(point.price)}<small>credits</small></strong><p class="initial-note">Reference price at the start of trading</p>`;
       return;
     }
-    const direction = point.aggressor_side === 'buy' ? '主动买入' : point.aggressor_side === 'sell' ? '主动卖出' : '成交';
-    $('#tradeDetail').innerHTML = `<div class="trade-detail-label"><span>${pinnedKey && !hoverKey ? '选中成交' : '成交详情'}</span><span>${escapeHTML(point.trade_id || '')}</span></div><time>${preciseTime(point.time)}</time><strong class="detail-price">${fmt(point.price)}<small>模拟元</small></strong><div class="trade-volume">成交 ${fmt(point.quantity,0)} 股</div><div class="trade-change"><span>本笔价格变化</span><strong class="${tone(point.price_change)}">${sign(point.price_change)}</strong></div><dl class="trade-parties"><div><dt>买方</dt><dd>${person(point.buyer_id)}</dd></div><div><dt>卖方</dt><dd>${person(point.seller_id)}</dd></div><div><dt>${direction}</dt><dd>${point.aggressor_id ? person(point.aggressor_id) : '—'}</dd></div></dl>`;
+    const direction = point.aggressor_side === 'buy' ? 'Buyer initiated' : point.aggressor_side === 'sell' ? 'Seller initiated' : 'Initiator';
+    $('#tradeDetail').innerHTML = `<div class="trade-detail-label"><span>${pinnedKey && !hoverKey ? 'Selected trade' : 'Trade details'}</span><span>${escapeHTML(point.trade_id || '')}</span></div><time>${preciseTime(point.time)}</time><strong class="detail-price">${fmt(point.price)}<small>credits</small></strong><div class="trade-volume">${fmt(point.quantity,0)} shares traded</div><div class="trade-change"><span>Price change</span><strong class="${tone(point.price_change)}">${sign(point.price_change)}</strong></div><dl class="trade-parties"><div><dt>Buyer</dt><dd>${person(point.buyer_id)}</dd></div><div><dt>Seller</dt><dd>${person(point.seller_id)}</dd></div><div><dt>${direction}</dt><dd>${point.aggressor_id ? person(point.aggressor_id) : '—'}</dd></div></dl>`;
     $$('#tradeLedgerBody tr').forEach(row=>row.classList.toggle('selected',row.dataset.ledgerKey===point.key));
   }
   function renderLedger(item) {
@@ -151,7 +151,7 @@
     if (ledgerKey === key) return;
     ledgerKey = key;
     $('#ledgerCount').textContent = fmt(trades.length,0);
-    $('#tradeLedgerBody').innerHTML = trades.length ? trades.map(point=>`<tr data-ledger-key="${escapeHTML(point.key)}"><td><button type="button" data-select-trade="${escapeHTML(point.key)}" aria-label="查看成交 ${escapeHTML(point.trade_id || point.key)}">${preciseTime(point.time)}</button></td><td>${fmt(point.price)}</td><td>${fmt(point.quantity,0)}</td><td>${escapeHTML(name(point.buyer_id))}</td><td>${escapeHTML(name(point.seller_id))}</td><td class="${tone(point.price_change)}">${sign(point.price_change)}</td></tr>`).join('') : '<tr><td colspan="6" class="empty-ledger">等待首笔成交。</td></tr>';
+    $('#tradeLedgerBody').innerHTML = trades.length ? trades.map(point=>`<tr data-ledger-key="${escapeHTML(point.key)}"><td><button type="button" data-select-trade="${escapeHTML(point.key)}" aria-label="View trade ${escapeHTML(point.trade_id || point.key)}">${preciseTime(point.time)}</button></td><td>${fmt(point.price)}</td><td>${fmt(point.quantity,0)}</td><td>${escapeHTML(name(point.buyer_id))}</td><td>${escapeHTML(name(point.seller_id))}</td><td class="${tone(point.price_change)}">${sign(point.price_change)}</td></tr>`).join('') : '<tr><td colspan="6" class="empty-ledger">Waiting for the first trade.</td></tr>';
   }
   function renderAccounts() {
     const order = $('#accountSort').value;
@@ -159,12 +159,12 @@
     const key = JSON.stringify([order,accounts]);
     if (tableKey === key) return;
     tableKey = key;
-    accounts.sort((a,b)=>order==='name' ? a.name.localeCompare(b.name,'zh-CN') : order==='equity_desc' ? b.equity-a.equity || a.name.localeCompare(b.name,'zh-CN') : (order==='return_asc' ? 1 : -1)*(returnRate(a)-returnRate(b)) || a.name.localeCompare(b.name,'zh-CN'));
+    accounts.sort((a,b)=>order==='name' ? a.name.localeCompare(b.name,'en-US') : order==='equity_desc' ? b.equity-a.equity || a.name.localeCompare(b.name,'en-US') : (order==='return_asc' ? 1 : -1)*(returnRate(a)-returnRate(b)) || a.name.localeCompare(b.name,'en-US'));
     const maximum = Math.max(...accounts.map(account=>Math.abs(returnRate(account))),0.0001);
-    $('#accountAnalysisNote').textContent = `${accounts.length} 位参与者 · 按最新成交价计算总资产与盈亏`;
+    $('#accountAnalysisNote').textContent = `${accounts.length} participants · Equity and profit/loss use the latest trade prices.`;
     $('#accountComparisonBody').innerHTML = accounts.map((account,index)=> {
       const rate = returnRate(account), length=Math.abs(rate)/maximum*44;
-      return `<tr data-account-id="${escapeHTML(account.actor_id)}"><th scope="row"><span class="account-rank">${index+1}</span>${person(account.actor_id)}${account.actor_id==='adrian' ? '<span class="you-label">你</span>' : ''}</th><td>${fmt(account.cash)}</td><td>${fmt(account.positions?.QH || 0,0)}</td><td>${fmt(account.positions?.YS || 0,0)}</td><td>${fmt(account.equity)}</td><td class="${tone(account.pnl)}">${sign(account.pnl)}</td><td class="return-cell ${tone(rate)}"><span class="return-bar" aria-hidden="true"><i style="left:${rate < 0 ? 50-length : 50}%;width:${length}%"></i></span><strong>${sign(rate,4)}%</strong></td></tr>`;
+      return `<tr data-account-id="${escapeHTML(account.actor_id)}"><th scope="row"><span class="account-rank">${index+1}</span>${person(account.actor_id)}${account.actor_id==='adrian' ? '<span class="you-label">You</span>' : ''}</th><td>${fmt(account.cash)}</td><td>${fmt(account.positions?.QH || 0,0)}</td><td>${fmt(account.positions?.YS || 0,0)}</td><td>${fmt(account.equity)}</td><td class="${tone(account.pnl)}">${sign(account.pnl)}</td><td class="return-cell ${tone(rate)}"><span class="return-bar" aria-hidden="true"><i style="left:${rate < 0 ? 50-length : 50}%;width:${length}%"></i></span><strong>${sign(rate,4)}%</strong></td></tr>`;
     }).join('');
   }
   function nearest(event) {

@@ -15,15 +15,15 @@ from mcp.client.streamable_http import streamable_http_client
 
 
 PLATFORMS = {
-    "weibo": ("微博", "weibo_search_posts"),
-    "xhs": ("小红书", "xhs_search_notes"),
-    "douyin": ("抖音", "douyin_search_videos"),
-    "kuaishou": ("快手", "kuaishou_search_videos"),
-    "bilibili": ("B站", "bilibili_search_videos"),
-    "zhihu": ("知乎", "zhihu_search_content"),
-    "wechat": ("微信视频号", "wechat_search_videos"),
-    "toutiao": ("今日头条", "toutiao_search_posts"),
-    "baidu-tieba": ("百度贴吧", "baidu_tieba_search_posts"),
+    "weibo": ("Weibo", "weibo_search_posts"),
+    "xhs": ("Xiaohongshu", "xhs_search_notes"),
+    "douyin": ("Douyin", "douyin_search_videos"),
+    "kuaishou": ("Kuaishou", "kuaishou_search_videos"),
+    "bilibili": ("Bilibili", "bilibili_search_videos"),
+    "zhihu": ("Zhihu", "zhihu_search_content"),
+    "wechat": ("WeChat Channels", "wechat_search_videos"),
+    "toutiao": ("Toutiao", "toutiao_search_posts"),
+    "baidu-tieba": ("Baidu Tieba", "baidu_tieba_search_posts"),
     "x": ("X / Twitter", "x_search_posts"),
     "youtube": ("YouTube", "youtube_search_videos"),
     "instagram": ("Instagram", "instagram_search_posts"),
@@ -38,7 +38,7 @@ def text_only(value, limit=900):
 def normalize(item):
     body = next((item.get(key) for key in ("content", "text", "description", "caption", "summary")
                  if item.get(key)), "")
-    title = item.get("title") or text_only(body, 100) or "社交媒体内容"
+    title = item.get("title") or text_only(body, 100) or "Social media post"
     author = item.get("author") or {}
     url = next((item.get(key) for key in ("note_url", "post_url", "content_url", "share_url")
                 if item.get(key)), None)
@@ -98,14 +98,14 @@ class SocialSearchClient:
 
     async def search(self, platform, query, limit=5):
         if platform not in PLATFORMS:
-            raise ValueError("请选择已提供的社交媒体渠道")
+            raise ValueError("Choose one of the supported social media channels")
         if platform not in self.headers:
-            raise ValueError("SocialDataX 尚未配置此渠道的 API Key")
+            raise ValueError("No SocialDataX API key is configured for this channel")
         query = query.strip()
         if not query or len(query) > 160:
-            raise ValueError("搜索关键词需要包含 1–160 个字符")
+            raise ValueError("Search query must contain 1–160 characters")
         if type(limit) is not int or not 1 <= limit <= 10:
-            raise ValueError("每次返回数量为 1–10 条")
+            raise ValueError("Request 1–10 results at a time")
         async with asyncio.timeout(45):
             async with httpx.AsyncClient(headers=self.headers[platform], timeout=40) as http:
                 async with streamable_http_client(self.endpoint(platform), http_client=http) as (read, write, _):
@@ -122,12 +122,12 @@ class SocialSearchClient:
         if response.isError or payload.get("error"):
             error = payload.get("error") or payload
             message = error if isinstance(error, str) else json.dumps(error, ensure_ascii=False)
-            if "insufficient" in message.lower() or "余额不足" in message or "积分不足" in message:
-                message += " 充值积分：https://socialdatax.com/dashboard/billing"
+            if "insufficient" in message.lower() or "\u4f59\u989d\u4e0d\u8db3" in message or "\u79ef\u5206\u4e0d\u8db3" in message:
+                message += " Top up credits: https://socialdatax.com/dashboard/billing"
             raise ValueError(message)
         items = payload.get("items")
         if not isinstance(items, list):
-            raise ValueError("SocialDataX 未返回可用搜索结果：" + text_only(payload.get("message"), 500))
+            raise ValueError("SocialDataX did not return usable search results: " + text_only(payload.get("message"), 500))
         return {"results": [normalize(item) for item in items[:limit]],
                 "page_result_count": len(items), "has_more": bool(payload.get("next_page_token")),
                 "points": payload.get("points")}
